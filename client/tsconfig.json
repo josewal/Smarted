@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "outDir": "./dist",
+    "paths": {
+      "smarted-shared": ["../shared/types.ts"]
+    }
+  },
+  "include": ["src/**/*", "../shared/**/*"]
+}
