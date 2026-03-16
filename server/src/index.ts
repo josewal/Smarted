@@ -7,7 +7,7 @@ import { sourceRoutes } from './routes/sources.js';
 import { authRoutes } from './routes/auth.js';
 import { workspaceRoutes } from './routes/workspaces.js';
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
@@ -28,6 +28,12 @@ app.use(session({
   },
 }));
 
+// Prevent browser caching of API responses (back button protection)
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/workspaces', workspaceRoutes);
@@ -40,6 +46,9 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Smarted server running on port ${PORT}`);
-});
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST;
+if (!isTestEnv) {
+  app.listen(PORT, () => {
+    console.log(`Smarted server running on port ${PORT}`);
+  });
+}

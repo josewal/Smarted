@@ -1,0 +1,656 @@
+tasks:
+    branch: "001-user-auth"
+    created: "2026-03-16"
+    spec_path: "specs/001-user-auth/spec.yaml"
+    plan_path: "specs/001-user-auth/plan.yaml"
+summary:
+    total_tasks: 34
+    total_phases: 11
+    parallel_opportunities: 12
+    estimated_complexity: "high"
+phases:
+    - number: 1
+      title: "Setup"
+      purpose: "Install new dependencies and configure testing infrastructure"
+      tasks:
+        - id: "T001"
+          title: "Install new server dependencies (nodemailer, express-rate-limit, @types/nodemailer)"
+          status: "Completed"
+          type: "setup"
+          parallel: false
+          story_id: null
+          file_path: "server/package.json"
+          dependencies: []
+          acceptance_criteria:
+            - "nodemailer ^6.9.0 is listed in server/package.json dependencies"
+            - "express-rate-limit ^7.0.0 is listed in server/package.json dependencies"
+            - "@types/nodemailer is listed in server/package.json devDependencies"
+            - "npm install completes without errors from the monorepo root"
+        - id: "T002"
+          title: "Configure Vitest for server testing (server/vitest.config.ts)"
+          status: "Completed"
+          type: "setup"
+          parallel: false
+          story_id: null
+          file_path: "server/vitest.config.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "vitest ^3.0.0 and supertest are in server devDependencies"
+            - "server/vitest.config.ts exists with TypeScript and ESM support"
+            - "A 'test' script is added to server/package.json that runs vitest"
+            - "Running 'npm test' in server/ exits cleanly with no tests found (not error)"
+    - number: 2
+      title: "Foundational"
+      purpose: "Database schema changes, shared types, and core services that all user stories depend on"
+      tasks:
+        - id: "T003"
+          title: "Create database migration 002_auth_enhancements.sql"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/db/migrations/002_auth_enhancements.sql"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "Adds email_verified BOOLEAN NOT NULL DEFAULT false column to users table"
+            - "Creates password_reset_tokens table with id (UUID PK), user_id (FK to users ON DELETE CASCADE), token_hash VARCHAR(255) NOT NULL, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ NULL, created_at TIMESTAMPTZ DEFAULT NOW()"
+            - "Creates email_verification_tokens table with same structure as password_reset_tokens"
+            - "Adds indexes on user_id for both token tables"
+            - "Migration is idempotent (uses IF NOT EXISTS where appropriate)"
+        - id: "T004"
+          title: "Update shared/types.ts with email_verified and token types"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "shared/types.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "User interface includes email_verified: boolean field"
+            - "New PasswordResetToken interface with id, user_id, token_hash, expires_at, used_at, created_at"
+            - "New EmailVerificationToken interface with same fields"
+            - "New request/response types for forgot-password, reset-password, change-password, verify-email endpoints"
+            - "All types use import/export ES module syntax"
+        - id: "T005"
+          title: "Create token generation and hashing service (server/src/services/auth/tokens.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/services/auth/tokens.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "generateToken() returns a 32-byte crypto.randomBytes hex string"
+            - "hashToken(token) returns SHA-256 hash of the input token"
+            - "Uses Node.js built-in crypto module (no extra dependencies)"
+            - "Functions are exported and typed"
+        - id: "T006"
+          title: "Create password validation and email normalization service (server/src/services/auth/validation.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/services/auth/validation.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "validatePassword(password) returns { valid: boolean, message?: string }"
+            - "Rejects passwords shorter than 8 characters with descriptive message"
+            - "normalizeEmail(email) returns lowercase trimmed email"
+            - "Functions are exported and typed"
+        - id: "T007"
+          title: "Create email sender service with Nodemailer and console fallback (server/src/services/email/sender.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/services/email/sender.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "createTransport() uses SMTP config from environment variables (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)"
+            - "Falls back to console.log email content when SMTP is not configured"
+            - "sendEmail({ to, subject, html }) function sends via transporter or logs to console"
+            - "Logs email sending errors but does not throw (fire-and-forget for non-critical emails)"
+            - "Uses ES module import/export syntax"
+        - id: "T008"
+          title: "Create email templates for reset and verification (server/src/services/email/templates.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/services/email/templates.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "passwordResetEmail(resetUrl) returns { subject: string, html: string } with a reset link"
+            - "emailVerificationEmail(verifyUrl) returns { subject: string, html: string } with a verification link"
+            - "Templates include basic HTML structure with clear call-to-action links"
+            - "Reset URL and verify URL are parameterized (not hardcoded)"
+        - id: "T009"
+          title: "Create auth query functions for tokens and verification (server/src/db/queries/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: null
+          file_path: "server/src/db/queries/auth.ts"
+          dependencies: ["T003", "T004"]
+          acceptance_criteria:
+            - "createPasswordResetToken(userId, tokenHash, expiresAt) inserts into password_reset_tokens"
+            - "findValidPasswordResetToken(tokenHash) returns unexpired, unused token or null"
+            - "markPasswordResetTokenUsed(tokenId) sets used_at to NOW()"
+            - "createEmailVerificationToken(userId, tokenHash, expiresAt) inserts into email_verification_tokens"
+            - "findValidEmailVerificationToken(tokenHash) returns unexpired, unused token or null"
+            - "markEmailVerified(userId) sets email_verified = true on users table"
+            - "updateUserPassword(userId, passwordHash) updates password_hash on users table"
+            - "findUserByEmail(email) returns user row or null (parameterized query)"
+            - "All queries use parameterized SQL ($1, $2, etc.)"
+            - "All functions are typed with return types matching shared/types.ts"
+        - id: "T010"
+          title: "Create rate limiting middleware (server/src/middleware/rateLimit.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: null
+          file_path: "server/src/middleware/rateLimit.ts"
+          dependencies: ["T001"]
+          acceptance_criteria:
+            - "authLimiter middleware limits to 10 requests per IP per 15-minute window"
+            - "Returns 429 status with { error: 'too_many_requests', message: string } on limit exceeded"
+            - "Uses express-rate-limit with in-memory store"
+            - "Exported for use in route files"
+    - number: 3
+      title: "User Story 1 - Account Registration Enhancements"
+      purpose: "Enhance existing registration with password validation, email normalization, and email_verified default"
+      story_reference: "US-001"
+      independent_test: "A new user can register with valid credentials and see email_verified: false in their profile; invalid passwords are rejected"
+      tasks:
+        - id: "T011"
+          title: "Enhance register endpoint with password validation, email normalization, and email_verified (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-001"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T006", "T009"]
+          acceptance_criteria:
+            - "POST /api/auth/register validates password length >= 8 chars using validation service"
+            - "Returns 400 with descriptive message if password is too short"
+            - "Email is normalized (lowercase, trimmed) before storage and duplicate check"
+            - "Response includes email_verified: false for new users"
+            - "Rate limiting middleware is applied to register endpoint"
+            - "Existing registration flow (bcrypt hashing, session creation, workspace creation) is preserved"
+        - id: "T012"
+          title: "Update Login.tsx registration form with password validation feedback (client/src/views/Login.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-001"
+          file_path: "client/src/views/Login.tsx"
+          dependencies: ["T011"]
+          acceptance_criteria:
+            - "Registration form shows password minimum length requirement hint"
+            - "Client-side validation prevents submission of passwords < 8 characters"
+            - "Server-side validation errors are displayed to the user"
+            - "Existing login/register toggle behavior is preserved"
+    - number: 4
+      title: "User Story 2 - Account Login Enhancements"
+      purpose: "Harden login with generic error messages, email normalization, and rate limiting"
+      story_reference: "US-002"
+      independent_test: "Login with wrong password shows generic error; login with non-existent email shows same generic error; excessive attempts return 429"
+      tasks:
+        - id: "T013"
+          title: "Enhance login endpoint with generic errors, email normalization, and rate limiting (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-002"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T006", "T010", "T011"]
+          acceptance_criteria:
+            - "POST /api/auth/login returns identical error message for non-existent email and wrong password"
+            - "Error message is generic: 'Invalid email or password' (does not reveal email existence)"
+            - "Email is normalized before lookup"
+            - "Rate limiting middleware (authLimiter) is applied to login endpoint"
+            - "Returns 429 when rate limit exceeded"
+            - "Successful login response includes email_verified field"
+        - id: "T014"
+          title: "Enhance /me endpoint to return email_verified field (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-002"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T013"]
+          acceptance_criteria:
+            - "GET /api/auth/me response includes email_verified boolean"
+            - "Query fetches email_verified from users table"
+            - "Unauthenticated requests still return 401"
+    - number: 5
+      title: "User Story 3 - Session Persistence"
+      purpose: "Handle session expiry gracefully with user-facing redirect and message"
+      story_reference: "US-003"
+      independent_test: "A user with expired session is redirected to login with 'session expired' message"
+      tasks:
+        - id: "T015"
+          title: "Add session expiry detection and redirect with message (client/src/views/App.tsx, client/src/api/client.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-003"
+          file_path: "client/src/views/App.tsx"
+          dependencies: ["T014"]
+          acceptance_criteria:
+            - "API client intercepts 401 responses globally"
+            - "On 401, user is redirected to login page with a query parameter (e.g., ?expired=1)"
+            - "Login page shows 'Your session has expired. Please log in again.' when expired param is present"
+            - "Normal logout does NOT show the session expired message"
+            - "Session persistence across browser close still works (existing 7-day cookie unchanged)"
+    - number: 6
+      title: "User Story 4 - Account Logout Enhancements"
+      purpose: "Prevent access to protected content after logout via back button"
+      story_reference: "US-004"
+      independent_test: "After logout, pressing browser back button does not show protected content"
+      tasks:
+        - id: "T016"
+          title: "Add back button protection after logout and already-authenticated redirect (client/src/views/App.tsx, client/src/views/Login.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-004"
+          file_path: "client/src/views/App.tsx"
+          dependencies: ["T015"]
+          acceptance_criteria:
+            - "After logout, using browser back button redirects to login (not cached protected page)"
+            - "Server sends Cache-Control: no-store header on protected API responses to prevent caching"
+            - "If already authenticated user navigates to /login, they are redirected to dashboard"
+            - "Existing logout flow (session destroy, redirect) is preserved"
+    - number: 7
+      title: "User Story 5 - Password Reset"
+      purpose: "Complete forgot-password and reset-password flow with email delivery"
+      story_reference: "US-005"
+      independent_test: "A user requests password reset, receives email with link, clicks link, sets new password, logs in with new password"
+      tasks:
+        - id: "T017"
+          title: "Add forgot-password and reset-password endpoints (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-005"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T005", "T007", "T008", "T009", "T010", "T014"]
+          acceptance_criteria:
+            - "POST /api/auth/forgot-password accepts { email } and always returns 200 with success message (prevents email enumeration)"
+            - "If email exists, generates token via tokens service, stores SHA-256 hash in password_reset_tokens with 1-hour expiry, sends reset email"
+            - "If email does not exist, returns same success response (no user enumeration)"
+            - "Rate limiting applied to forgot-password endpoint"
+            - "POST /api/auth/reset-password accepts { token, password }"
+            - "Validates token by hashing and looking up in database, checks expiry and used_at"
+            - "Validates new password meets minimum requirements"
+            - "Updates user password with bcrypt hash, marks token as used"
+            - "Returns 400 for invalid/expired/used tokens with descriptive message"
+        - id: "T018"
+          title: "Create usePasswordReset viewmodel hook (client/src/viewmodels/usePasswordReset.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: "US-005"
+          file_path: "client/src/viewmodels/usePasswordReset.ts"
+          dependencies: ["T017"]
+          acceptance_criteria:
+            - "useForgotPassword() hook manages email input, loading state, success/error messages"
+            - "Calls POST /api/auth/forgot-password via API client"
+            - "useResetPassword(token) hook manages new password input, loading state, success/error"
+            - "Calls POST /api/auth/reset-password via API client with token from URL"
+            - "Both hooks follow existing viewmodel patterns (useAuth.ts, useCards.ts)"
+        - id: "T019"
+          title: "Create ForgotPassword view (client/src/views/ForgotPassword.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: "US-005"
+          file_path: "client/src/views/ForgotPassword.tsx"
+          dependencies: ["T018"]
+          acceptance_criteria:
+            - "Form with email input and submit button"
+            - "Shows loading state during submission"
+            - "Shows success message after submission (check your email)"
+            - "Shows error message on failure"
+            - "Link back to login page"
+            - "Uses usePasswordReset viewmodel hook"
+        - id: "T020"
+          title: "Create ResetPassword view (client/src/views/ResetPassword.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: "US-005"
+          file_path: "client/src/views/ResetPassword.tsx"
+          dependencies: ["T018"]
+          acceptance_criteria:
+            - "Extracts token from URL query parameter"
+            - "Form with new password input (and confirm password) and submit button"
+            - "Client-side password validation (8+ characters)"
+            - "Shows success message with link to login on completion"
+            - "Shows error for invalid/expired tokens with link to request new reset"
+            - "Uses usePasswordReset viewmodel hook"
+        - id: "T021"
+          title: "Add password reset routes to App.tsx and forgot password link to Login.tsx"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-005"
+          file_path: "client/src/views/App.tsx"
+          dependencies: ["T019", "T020"]
+          acceptance_criteria:
+            - "/forgot-password route renders ForgotPassword view (public route)"
+            - "/reset-password route renders ResetPassword view (public route)"
+            - "Login.tsx includes a 'Forgot password?' link that navigates to /forgot-password"
+            - "Routes are accessible without authentication"
+    - number: 8
+      title: "User Story 6 - Password Change"
+      purpose: "Allow authenticated users to change their password from account settings"
+      story_reference: "US-006"
+      independent_test: "A logged-in user navigates to account settings, enters current + new password, password is updated"
+      tasks:
+        - id: "T022"
+          title: "Add change-password endpoint (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-006"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T017"]
+          acceptance_criteria:
+            - "POST /api/auth/change-password accepts { currentPassword, newPassword }"
+            - "Requires authenticated session (returns 401 if not logged in)"
+            - "Verifies current password with bcrypt.compare"
+            - "Returns 401 if current password is incorrect"
+            - "Validates new password meets minimum requirements (8+ chars)"
+            - "Returns 400 if new password is invalid"
+            - "Updates password hash in database via auth queries"
+            - "Returns 200 with success message on completion"
+        - id: "T023"
+          title: "Create useAccountSettings viewmodel hook (client/src/viewmodels/useAccountSettings.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: "US-006"
+          file_path: "client/src/viewmodels/useAccountSettings.ts"
+          dependencies: ["T022"]
+          acceptance_criteria:
+            - "useAccountSettings() hook manages current password, new password inputs, loading state, success/error"
+            - "changePassword(currentPassword, newPassword) calls POST /api/auth/change-password"
+            - "Clears form and shows success message on completion"
+            - "Displays server error messages on failure"
+            - "Follows existing viewmodel patterns"
+        - id: "T024"
+          title: "Create AccountSettings view (client/src/views/AccountSettings.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-006"
+          file_path: "client/src/views/AccountSettings.tsx"
+          dependencies: ["T023"]
+          acceptance_criteria:
+            - "Displays user email and account info"
+            - "Password change form with current password, new password, and confirm new password fields"
+            - "Client-side validation: new password >= 8 chars, confirm matches"
+            - "Shows loading state during submission"
+            - "Shows success/error messages"
+            - "Uses useAccountSettings viewmodel and existing Layout component"
+        - id: "T025"
+          title: "Add account settings route to App.tsx and navigation link to Layout.tsx"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-006"
+          file_path: "client/src/views/App.tsx"
+          dependencies: ["T024"]
+          acceptance_criteria:
+            - "/settings route renders AccountSettings view (protected route)"
+            - "Layout.tsx navigation includes a link to /settings (e.g., gear icon or 'Settings' text)"
+            - "Route requires authentication (redirects to login if not authenticated)"
+    - number: 9
+      title: "User Story 7 - Email Verification"
+      purpose: "Send verification emails on registration and allow users to verify their email"
+      story_reference: "US-007"
+      independent_test: "A new user registers, receives verification email, clicks link, account shows email_verified: true"
+      tasks:
+        - id: "T026"
+          title: "Add verify-email and resend-verification endpoints (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-007"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T022"]
+          acceptance_criteria:
+            - "POST /api/auth/verify-email accepts { token }, hashes token, looks up in email_verification_tokens"
+            - "Returns 200 with success message if token is valid, unexpired, and unused"
+            - "Marks email_verified = true on user and token as used"
+            - "Returns 400 for invalid/expired/used tokens"
+            - "POST /api/auth/resend-verification requires authenticated session"
+            - "Generates new verification token, invalidates previous ones (or relies on expiry)"
+            - "Sends verification email to user's email address"
+            - "Rate limiting applied to resend-verification"
+            - "Returns 200 with success message"
+        - id: "T027"
+          title: "Trigger verification email on registration (server/src/routes/auth.ts)"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-007"
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T026"]
+          acceptance_criteria:
+            - "After successful registration, generates email verification token"
+            - "Stores SHA-256 hash in email_verification_tokens with 24-hour expiry"
+            - "Sends verification email with link containing raw token"
+            - "Email sending is fire-and-forget (registration succeeds even if email fails)"
+            - "Verification URL uses CLIENT_URL environment variable for the base URL"
+        - id: "T028"
+          title: "Create EmailVerificationBanner component (client/src/components/EmailVerificationBanner.tsx)"
+          status: "Completed"
+          type: "implementation"
+          parallel: true
+          story_id: "US-007"
+          file_path: "client/src/components/EmailVerificationBanner.tsx"
+          dependencies: ["T026"]
+          acceptance_criteria:
+            - "Displays a non-blocking banner/alert for unverified users"
+            - "Message prompts user to check their email for verification link"
+            - "Includes a 'Resend verification email' button"
+            - "Button calls POST /api/auth/resend-verification"
+            - "Shows loading state while resending"
+            - "Shows success/error feedback after resend attempt"
+            - "Banner is dismissible or non-intrusive"
+        - id: "T029"
+          title: "Show email verification banner in App.tsx for unverified users"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: "US-007"
+          file_path: "client/src/views/App.tsx"
+          dependencies: ["T028"]
+          acceptance_criteria:
+            - "App.tsx checks user.email_verified from auth state"
+            - "If email_verified is false, renders EmailVerificationBanner above main content"
+            - "Banner does NOT block access to any functionality (per plan: full access with reminder)"
+            - "Banner disappears when user verifies email (on next auth state refresh)"
+    - number: 10
+      title: "Tests"
+      purpose: "Unit and integration tests for auth services and endpoints"
+      tasks:
+        - id: "T030"
+          title: "Create unit tests for validation service (server/src/__tests__/validation.test.ts)"
+          status: "Completed"
+          type: "test"
+          parallel: true
+          story_id: null
+          file_path: "server/src/__tests__/validation.test.ts"
+          dependencies: ["T002", "T006"]
+          acceptance_criteria:
+            - "Tests validatePassword rejects passwords < 8 characters"
+            - "Tests validatePassword accepts passwords >= 8 characters"
+            - "Tests normalizeEmail lowercases and trims email"
+            - "Tests edge cases: empty string, whitespace-only, very long passwords"
+            - "All tests pass with vitest"
+        - id: "T031"
+          title: "Create unit tests for token service (server/src/__tests__/tokens.test.ts)"
+          status: "Completed"
+          type: "test"
+          parallel: true
+          story_id: null
+          file_path: "server/src/__tests__/tokens.test.ts"
+          dependencies: ["T002", "T005"]
+          acceptance_criteria:
+            - "Tests generateToken returns a 64-character hex string (32 bytes)"
+            - "Tests generateToken returns unique values on successive calls"
+            - "Tests hashToken returns consistent SHA-256 hash for same input"
+            - "Tests hashToken returns different hash for different input"
+            - "All tests pass with vitest"
+        - id: "T032"
+          title: "Create integration tests for auth endpoints (server/src/__tests__/auth.test.ts)"
+          status: "Completed"
+          type: "test"
+          parallel: false
+          story_id: null
+          file_path: "server/src/__tests__/auth.test.ts"
+          dependencies: ["T002", "T027"]
+          acceptance_criteria:
+            - "Tests POST /api/auth/register with valid data returns 201 with user data"
+            - "Tests POST /api/auth/register with short password returns 400"
+            - "Tests POST /api/auth/register with duplicate email returns 409"
+            - "Tests POST /api/auth/login with valid credentials returns 200"
+            - "Tests POST /api/auth/login with wrong password returns 401 with generic message"
+            - "Tests POST /api/auth/login with non-existent email returns 401 with same generic message"
+            - "Tests POST /api/auth/forgot-password always returns 200"
+            - "Tests POST /api/auth/reset-password with valid token updates password"
+            - "Tests POST /api/auth/reset-password with expired token returns 400"
+            - "Tests POST /api/auth/change-password requires authentication"
+            - "Tests POST /api/auth/change-password with wrong current password returns 401"
+            - "Tests POST /api/auth/verify-email with valid token marks email verified"
+            - "Uses supertest for HTTP assertions"
+    - number: 11
+      title: "Polish & Cross-Cutting Concerns"
+      purpose: "Environment configuration documentation and final integration validation"
+      tasks:
+        - id: "T033"
+          title: "Add SMTP and auth environment variables to .env.example"
+          status: "Completed"
+          type: "documentation"
+          parallel: true
+          story_id: null
+          file_path: ".env.example"
+          dependencies: ["T027"]
+          acceptance_criteria:
+            - ".env.example includes SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS with comments"
+            - ".env.example includes CLIENT_URL (base URL for email links, e.g., http://localhost:5173)"
+            - "Existing environment variables are preserved"
+            - "Comments explain which variables are optional for development (SMTP falls back to console)"
+        - id: "T034"
+          title: "Validate all acceptance scenarios end-to-end across user stories"
+          status: "Completed"
+          type: "implementation"
+          parallel: false
+          story_id: null
+          file_path: "server/src/routes/auth.ts"
+          dependencies: ["T029", "T032", "T033"]
+          acceptance_criteria:
+            - "All auth endpoints return consistent response shape: { data: T } on success, { error: string, message: string } on error"
+            - "All new imports use ES module syntax with .js extensions"
+            - "No TypeScript compilation errors across server, client, and shared packages"
+            - "Rate limiting does not interfere with normal usage patterns"
+            - "Console fallback email logging works when SMTP is not configured"
+dependencies:
+    user_story_order:
+        - story_id: "US-001"
+          depends_on: []
+          blocks: ["US-002"]
+        - story_id: "US-002"
+          depends_on: ["US-001"]
+          blocks: ["US-003", "US-004"]
+        - story_id: "US-003"
+          depends_on: ["US-002"]
+          blocks: []
+        - story_id: "US-004"
+          depends_on: ["US-002"]
+          blocks: []
+        - story_id: "US-005"
+          depends_on: []
+          blocks: ["US-006"]
+        - story_id: "US-006"
+          depends_on: ["US-005"]
+          blocks: ["US-007"]
+        - story_id: "US-007"
+          depends_on: ["US-006"]
+          blocks: []
+    phase_order:
+        - phase: 1
+          blocks: [2]
+        - phase: 2
+          blocks: [3, 4, 5, 6, 7, 8, 9]
+        - phase: 3
+          blocks: [4]
+        - phase: 4
+          blocks: [5, 6]
+        - phase: 5
+          blocks: [6]
+        - phase: 6
+          blocks: []
+        - phase: 7
+          blocks: [8]
+        - phase: 8
+          blocks: [9]
+        - phase: 9
+          blocks: [10, 11]
+        - phase: 10
+          blocks: [11]
+parallel_execution:
+    - phase: 2
+      parallel_groups:
+        - tasks: ["T003", "T004", "T005", "T006", "T007", "T008", "T010"]
+          rationale: "Independent files with no shared state — migration, types, services, and middleware can all be created in parallel"
+    - phase: 7
+      parallel_groups:
+        - tasks: ["T019", "T020"]
+          rationale: "ForgotPassword and ResetPassword views are independent React components"
+    - phase: 8
+      parallel_groups:
+        - tasks: ["T023"]
+          rationale: "Viewmodel can be developed alongside endpoint once API contract is known"
+    - phase: 9
+      parallel_groups:
+        - tasks: ["T028"]
+          rationale: "EmailVerificationBanner is an independent component, can be built alongside endpoints"
+    - phase: 10
+      parallel_groups:
+        - tasks: ["T030", "T031"]
+          rationale: "Unit tests for validation and tokens are fully independent"
+implementation_strategy:
+    mvp_scope:
+        phases: [1, 2, 3, 4]
+        description: "Setup + Foundational services + Registration & Login enhancements — secures the existing auth surface"
+        validation: "Register with password validation, login with rate limiting and generic errors, /me returns email_verified"
+    incremental_delivery:
+        - milestone: "Foundation Ready"
+          phases: [1, 2]
+          deliverable: "Database migrated, all services and utilities in place, rate limiting middleware ready"
+        - milestone: "Auth Hardened"
+          phases: [1, 2, 3, 4]
+          deliverable: "Existing register/login/me endpoints enhanced with validation, normalization, rate limiting, generic errors"
+        - milestone: "Session & Logout Polish"
+          phases: [1, 2, 3, 4, 5, 6]
+          deliverable: "Session expiry handling, back button protection, already-authenticated redirects"
+        - milestone: "Password Reset Complete"
+          phases: [1, 2, 3, 4, 5, 6, 7]
+          deliverable: "Full forgot-password and reset-password flow with email delivery and frontend views"
+        - milestone: "Full Feature Complete"
+          phases: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+          deliverable: "All user stories implemented: password change, email verification, account settings"
+        - milestone: "Tested & Polished"
+          phases: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+          deliverable: "Complete auth feature with unit tests, integration tests, and cross-cutting validation"
+_meta:
+    version: "1.0.0"
+    generator: "autospec"
+    generator_version: "autospec 0.10.5"
+    created: "2026-03-16T22:23:41Z"
+    artifact_type: "tasks"
