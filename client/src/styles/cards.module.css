@@ -1,0 +1,140 @@
+.cardEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  font-size: 24px;
+}
+
+.addButton {
+  background: var(--color-primary);
+  color: white;
+  font-weight: 600;
+}
+
+.addButton:hover {
+  background: var(--color-primary-hover);
+}
+
+.form {
+  background: var(--color-surface);
+  padding: 20px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formField label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.formActions {
+  display: flex;
+  gap: 8px;
+}
+
+.formActions button:first-child {
+  background: var(--color-primary);
+  color: white;
+}
+
+.formActions button:last-child {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cardItem {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardFront {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.cardBack {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.cardMeta {
+  display: flex;
+  gap: 8px;
+}
+
+.cardOrigin, .cardType {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.cardActions button {
+  font-size: 13px;
+  padding: 4px 12px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.cardActions button:hover {
+  color: var(--color-text);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: 40px;
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 40px;
+}
+
+.error {
+  color: var(--color-danger);
+}

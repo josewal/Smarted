@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "smarted-shared": ["../shared/types.ts"]
+    }
+  },
+  "include": ["src/**/*", "../shared/**/*"]
+}

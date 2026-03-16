@@ -1,0 +1,126 @@
+.session {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 0;
+}
+
+.progress {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.cardContainer {
+  cursor: pointer;
+  perspective: 1000px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+}
+
+.cardFace {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  backface-visibility: hidden;
+  font-size: 18px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.cardBack {
+  transform: rotateY(180deg);
+  background: #f0f7ff;
+}
+
+.flipHint {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.ratingButtons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ratingButton {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  background: var(--btn-color);
+  border-radius: var(--radius);
+  min-width: 80px;
+  transition: transform 0.1s, opacity 0.15s;
+}
+
+.ratingButton:hover {
+  transform: scale(1.05);
+}
+
+.ratingButton:active {
+  transform: scale(0.97);
+}
+
+.sessionComplete {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.sessionComplete h1 {
+  margin-bottom: 12px;
+}
+
+.leechWarning {
+  background: #fef2f2;
+  color: var(--color-again);
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  margin: 20px 0;
+  font-size: 14px;
+}
+
+.restartButton {
+  background: var(--color-primary);
+  color: white;
+  padding: 10px 24px;
+  font-size: 15px;
+  margin-top: 16px;
+}
+
+.noCards {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--color-text-secondary);
+}
+
+.noCards h1 {
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 40px;
+}
+
+.error {
+  color: var(--color-danger);
+}
