@@ -11,7 +11,46 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
+  email_verified: boolean;
   created_at: string;
+}
+
+export interface PasswordResetToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
+export interface EmailVerificationToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
+// -- Auth Request/Response Types --
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
 }
 
 export interface Workspace {

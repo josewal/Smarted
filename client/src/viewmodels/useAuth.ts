@@ -30,5 +30,14 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { user, loading, login, register, logout };
+  const refreshUser = useCallback(async () => {
+    try {
+      const u = await api.me();
+      setUser(u);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return { user, loading, login, register, logout, refreshUser };
 }

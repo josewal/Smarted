@@ -26,6 +26,9 @@ export function Layout({ children, onLogout }: LayoutProps) {
             Sources
           </NavLink>
         </div>
+        <NavLink to="/settings" className={({ isActive }) => isActive ? styles.navLinkActive : styles.navLink}>
+          Settings
+        </NavLink>
         {onLogout && (
           <button className={styles.logoutButton} onClick={onLogout}>
             Log out

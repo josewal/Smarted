@@ -10,6 +10,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register') && !path.startsWith('/auth/me')) {
+      window.location.href = '/login?expired=1';
+      throw new Error('Session expired');
+    }
     const error: ApiError = await res.json().catch(() => ({ error: 'Unknown', message: res.statusText }));
     throw new Error(error.message || error.error);
   }
@@ -28,6 +32,16 @@ export const api = {
     request('/auth/logout', { method: 'POST' }),
   me: () =>
     request<import('smarted-shared').User>('/auth/me'),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ message: string }>('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+  verifyEmail: (token: string) =>
+    request<{ message: string }>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  resendVerification: () =>
+    request<{ message: string }>('/auth/resend-verification', { method: 'POST' }),
 
   // Cards
   listCards: (workspaceId: string) =>

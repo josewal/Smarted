@@ -1,0 +1,538 @@
+plan:
+  branch: "001-user-auth"
+  created: "2026-03-16"
+  spec_path: "specs/001-user-auth/spec.yaml"
+
+summary: |
+  This plan extends the existing session-based authentication in Smarted to cover password reset,
+  password change, email verification, rate limiting, and hardened security controls. The MVP already
+  has register, login, logout, and session persistence — this feature completes the auth surface area
+  specified in the spec.
+
+  Key technical decisions: Nodemailer for email delivery (SMTP-agnostic, works with any provider),
+  express-rate-limit for brute-force protection, and Node.js crypto.randomBytes for secure token
+  generation. All new code follows the established patterns — parameterized SQL in db/queries/,
+  thin Express route handlers, typed shared interfaces, and MVM on the frontend. A new database
+  migration adds the email_verified column and password_reset_tokens table.
+
+technical_context:
+  language: "TypeScript"
+  framework: "Express.js (server) + React 19 (client)"
+  primary_dependencies:
+    - name: "express"
+      version: "^4.21.0"
+      purpose: "HTTP server framework (existing)"
+    - name: "express-session"
+      version: "^1.18.1"
+      purpose: "Session management with cookies (existing)"
+    - name: "bcrypt"
+      version: "^5.1.1"
+      purpose: "Password hashing (existing)"
+    - name: "pg"
+      version: "^8.13.0"
+      purpose: "PostgreSQL client (existing)"
+    - name: "nodemailer"
+      version: "^6.9.0"
+      purpose: "Email delivery for password reset and verification"
+    - name: "express-rate-limit"
+      version: "^7.0.0"
+      purpose: "Rate limiting on auth endpoints to prevent brute force"
+    - name: "vitest"
+      version: "^3.0.0"
+      purpose: "Unit and integration testing framework"
+  storage: "PostgreSQL (existing)"
+  testing:
+    framework: "Vitest"
+    approach: |
+      Unit tests for query functions, services, and validation logic.
+      Integration tests for auth route handlers using supertest.
+      Frontend component tests deferred to a later feature.
+  target_platform: "Web (Node.js server + browser client)"
+  project_type: "web"
+  performance_goals: "95th percentile login/register response under 2 seconds"
+  constraints:
+    - "Must integrate with existing PostgreSQL schema (additive migration only)"
+    - "Must maintain session-based auth approach (no JWT)"
+    - "Email delivery requires SMTP configuration (environment variables)"
+    - "Rate limiting must not block legitimate users (10 failed attempts per 15 min)"
+    - "All new SQL must use parameterized queries"
+  scale_scope: "Single-server deployment, hundreds of concurrent users"
+
+constitution_check:
+  constitution_path: ".autospec/constitution.yaml"
+  gates:
+    - name: "Simple, Proven Components (PRIN-001)"
+      status: "PASS"
+      notes: |
+        Nodemailer and express-rate-limit are proven, minimal libraries.
+        No ORM, no unnecessary abstractions. crypto.randomBytes is stdlib.
+    - name: "Type Safety End-to-End (PRIN-002)"
+      status: "PASS"
+      notes: |
+        All new interfaces added to smarted-shared types.ts.
+        New query functions fully typed. Route handlers typed.
+    - name: "Separation of Concerns (PRIN-003)"
+      status: "PASS"
+      notes: |
+        Email service in services/email/. Auth logic in routes/auth.ts.
+        New frontend views follow MVM pattern with viewmodel hooks.
+    - name: "Backend is Single Source of Truth (PRIN-004)"
+      status: "PASS"
+      notes: |
+        All auth state managed server-side. Frontend calls API client.
+        No client-side token storage or auth state duplication.
+    - name: "SQL Injection Prevention (PRIN-005)"
+      status: "PASS"
+      notes: |
+        All new queries use parameterized SQL ($1, $2).
+        Query functions isolated in db/queries/ directory.
+    - name: "Secrets Never in Code (PRIN-006)"
+      status: "PASS"
+      notes: |
+        SMTP credentials, session secret loaded from environment variables.
+        Development defaults clearly marked.
+    - name: "Password Security (PRIN-007)"
+      status: "PASS"
+      notes: |
+        bcrypt with cost factor >= 10 for all password operations.
+        Session cookies httpOnly + secure in production. Reset tokens hashed.
+    - name: "ES Modules Only (PRIN-008)"
+      status: "PASS"
+      notes: "All new code uses import/export syntax with .js extensions."
+    - name: "Immutable Review History (PRIN-009)"
+      status: "N/A"
+      notes: "Auth feature does not touch review_logs table."
+    - name: "Consistent API Response Shape (PRIN-010)"
+      status: "PASS"
+      notes: |
+        Success: { data: T }. Error: { error: string, message: string }.
+        HTTP status codes follow REST conventions.
+    - name: "Monorepo Package Boundaries (PRIN-011)"
+      status: "PASS"
+      notes: |
+        Shared types in smarted-shared. No cross-package imports
+        between client and server.
+
+research_findings:
+  decisions:
+    - topic: "Email delivery library"
+      decision: "Nodemailer"
+      rationale: |
+        De facto standard for Node.js email. SMTP-agnostic so works with
+        any provider (Mailgun, SES, Gmail, local dev tools like Ethereal).
+        No vendor lock-in. Zero additional abstractions needed.
+      alternatives_considered:
+        - "SendGrid SDK — vendor-specific, adds unnecessary coupling"
+        - "@aws-sdk/client-ses — AWS-specific, overkill for MVP"
+        - "Resend — newer, less proven, paid-only"
+    - topic: "Rate limiting approach"
+      decision: "express-rate-limit with in-memory store"
+      rationale: |
+        Simple, proven middleware. In-memory store is appropriate for
+        single-server deployment. Can upgrade to Redis store later if
+        needed for horizontal scaling.
+      alternatives_considered:
+        - "rate-limiter-flexible with Redis — over-engineered for single server"
+        - "Custom middleware with pg counters — reinventing the wheel"
+    - topic: "Password reset token storage"
+      decision: "SHA-256 hash of token stored in database, raw token sent in email"
+      rationale: |
+        Same pattern as password hashing — if the database is compromised,
+        tokens cannot be used. crypto.randomBytes(32) provides 256 bits of
+        entropy. Token hashed with SHA-256 before storage.
+      alternatives_considered:
+        - "Store raw token — vulnerable if database is compromised"
+        - "JWT-based reset tokens — adds complexity, no session invalidation"
+    - topic: "Testing framework"
+      decision: "Vitest"
+      rationale: |
+        Constitution follow-up todos explicitly mention Vitest.
+        Fast, ESM-native, TypeScript-first, compatible with Vite toolchain.
+      alternatives_considered:
+        - "Jest — CommonJS-centric, slower, requires more configuration"
+        - "Node.js test runner — too minimal for project needs"
+    - topic: "Email for development/testing"
+      decision: "Ethereal (Nodemailer test accounts) for dev, console fallback"
+      rationale: |
+        Ethereal provides real SMTP without sending actual emails.
+        Console fallback logs email content when no SMTP is configured,
+        enabling development without any external service.
+      alternatives_considered:
+        - "Mailhog Docker container — requires Docker, heavier setup"
+        - "Skip emails in dev — hides bugs in email templates"
+
+data_model:
+  entities:
+    - name: "User"
+      description: "A person who uses Smarted to study with flashcards"
+      fields:
+        - name: "id"
+          type: "UUID"
+          description: "Primary key, auto-generated"
+          constraints: "NOT NULL, DEFAULT gen_random_uuid()"
+        - name: "email"
+          type: "VARCHAR(255)"
+          description: "Login identifier, stored lowercase"
+          constraints: "NOT NULL, UNIQUE"
+        - name: "password_hash"
+          type: "VARCHAR(255)"
+          description: "bcrypt hash of user password"
+          constraints: "NOT NULL"
+        - name: "name"
+          type: "VARCHAR(255)"
+          description: "Optional display name"
+          constraints: "NULL allowed"
+        - name: "email_verified"
+          type: "BOOLEAN"
+          description: "Whether user has verified their email address"
+          constraints: "NOT NULL, DEFAULT false"
+        - name: "created_at"
+          type: "TIMESTAMPTZ"
+          description: "Account creation timestamp"
+          constraints: "NOT NULL, DEFAULT NOW()"
+      relationships:
+        - target: "Workspace"
+          type: "one-to-many"
+          description: "User owns multiple workspaces"
+        - target: "PasswordResetToken"
+          type: "one-to-many"
+          description: "User can have reset tokens"
+        - target: "EmailVerificationToken"
+          type: "one-to-many"
+          description: "User can have verification tokens"
+
+    - name: "PasswordResetToken"
+      description: "Time-limited token for password reset flow"
+      fields:
+        - name: "id"
+          type: "UUID"
+          description: "Primary key"
+          constraints: "NOT NULL, DEFAULT gen_random_uuid()"
+        - name: "user_id"
+          type: "UUID"
+          description: "User who requested the reset"
+          constraints: "NOT NULL, REFERENCES users(id) ON DELETE CASCADE"
+        - name: "token_hash"
+          type: "VARCHAR(255)"
+          description: "SHA-256 hash of the reset token"
+          constraints: "NOT NULL"
+        - name: "expires_at"
+          type: "TIMESTAMPTZ"
+          description: "Token expiration (1 hour from creation)"
+          constraints: "NOT NULL"
+        - name: "used_at"
+          type: "TIMESTAMPTZ"
+          description: "When the token was consumed (NULL if unused)"
+          constraints: "NULL allowed"
+        - name: "created_at"
+          type: "TIMESTAMPTZ"
+          description: "Token creation timestamp"
+          constraints: "NOT NULL, DEFAULT NOW()"
+      relationships:
+        - target: "User"
+          type: "many-to-one"
+          description: "Token belongs to a user"
+
+    - name: "EmailVerificationToken"
+      description: "Token for email address verification"
+      fields:
+        - name: "id"
+          type: "UUID"
+          description: "Primary key"
+          constraints: "NOT NULL, DEFAULT gen_random_uuid()"
+        - name: "user_id"
+          type: "UUID"
+          description: "User to verify"
+          constraints: "NOT NULL, REFERENCES users(id) ON DELETE CASCADE"
+        - name: "token_hash"
+          type: "VARCHAR(255)"
+          description: "SHA-256 hash of the verification token"
+          constraints: "NOT NULL"
+        - name: "expires_at"
+          type: "TIMESTAMPTZ"
+          description: "Token expiration (24 hours from creation)"
+          constraints: "NOT NULL"
+        - name: "used_at"
+          type: "TIMESTAMPTZ"
+          description: "When the token was consumed (NULL if unused)"
+          constraints: "NULL allowed"
+        - name: "created_at"
+          type: "TIMESTAMPTZ"
+          description: "Token creation timestamp"
+          constraints: "NOT NULL, DEFAULT NOW()"
+      relationships:
+        - target: "User"
+          type: "many-to-one"
+          description: "Token belongs to a user"
+
+api_contracts:
+  endpoints:
+    - method: "POST"
+      path: "/api/auth/register"
+      description: "Register a new user account (existing endpoint — enhanced with password validation and email verification trigger)"
+      request:
+        content_type: "application/json"
+        body_schema: "{ email: string, password: string, name?: string }"
+      response:
+        success_code: 201
+        body_schema: "{ data: { id: string, email: string, name: string | null, email_verified: boolean, created_at: string } }"
+      errors:
+        - code: 400
+          description: "Password does not meet minimum requirements (8+ characters)"
+        - code: 409
+          description: "Email already registered"
+
+    - method: "POST"
+      path: "/api/auth/login"
+      description: "Authenticate with email and password (existing endpoint — enhanced with generic error messages)"
+      request:
+        content_type: "application/json"
+        body_schema: "{ email: string, password: string }"
+      response:
+        success_code: 200
+        body_schema: "{ data: { id: string, email: string, name: string | null, email_verified: boolean, created_at: string } }"
+      errors:
+        - code: 401
+          description: "Invalid email or password (generic, does not reveal email existence)"
+        - code: 429
+          description: "Too many login attempts, try again later"
+
+    - method: "POST"
+      path: "/api/auth/logout"
+      description: "Destroy the current session (existing endpoint — unchanged)"
+      request:
+        content_type: "application/json"
+        body_schema: "{}"
+      response:
+        success_code: 200
+        body_schema: "{ ok: true }"
+      errors: []
+
+    - method: "GET"
+      path: "/api/auth/me"
+      description: "Get current authenticated user (existing endpoint — adds email_verified field)"
+      request:
+        content_type: "application/json"
+        body_schema: "N/A"
+      response:
+        success_code: 200
+        body_schema: "{ data: { id: string, email: string, name: string | null, email_verified: boolean, created_at: string } }"
+      errors:
+        - code: 401
+          description: "Not authenticated"
+
+    - method: "POST"
+      path: "/api/auth/forgot-password"
+      description: "Request a password reset email"
+      request:
+        content_type: "application/json"
+        body_schema: "{ email: string }"
+      response:
+        success_code: 200
+        body_schema: "{ data: { message: string } }"
+      errors:
+        - code: 429
+          description: "Too many reset requests, try again later"
+
+    - method: "POST"
+      path: "/api/auth/reset-password"
+      description: "Reset password using a valid token from the reset email"
+      request:
+        content_type: "application/json"
+        body_schema: "{ token: string, password: string }"
+      response:
+        success_code: 200
+        body_schema: "{ data: { message: string } }"
+      errors:
+        - code: 400
+          description: "Token is invalid, expired, or already used; or password does not meet requirements"
+
+    - method: "POST"
+      path: "/api/auth/change-password"
+      description: "Change password for the authenticated user"
+      request:
+        content_type: "application/json"
+        body_schema: "{ currentPassword: string, newPassword: string }"
+      response:
+        success_code: 200
+        body_schema: "{ data: { message: string } }"
+      errors:
+        - code: 400
+          description: "New password does not meet requirements"
+        - code: 401
+          description: "Not authenticated or current password is incorrect"
+
+    - method: "POST"
+      path: "/api/auth/verify-email"
+      description: "Verify email address using token from verification email"
+      request:
+        content_type: "application/json"
+        body_schema: "{ token: string }"
+      response:
+        success_code: 200
+        body_schema: "{ data: { message: string } }"
+      errors:
+        - code: 400
+          description: "Token is invalid, expired, or already used"
+
+    - method: "POST"
+      path: "/api/auth/resend-verification"
+      description: "Resend email verification link"
+      request:
+        content_type: "application/json"
+        body_schema: "{}"
+      response:
+        success_code: 200
+        body_schema: "{ data: { message: string } }"
+      errors:
+        - code: 401
+          description: "Not authenticated"
+        - code: 429
+          description: "Too many requests, try again later"
+
+project_structure:
+  documentation:
+    - path: "ARCHITECTURE.md"
+      description: "Updated with auth flow diagrams and email service documentation"
+  source_code:
+    - path: "server/src/db/migrations/002_auth_enhancements.sql"
+      description: "Migration adding email_verified, password_reset_tokens, email_verification_tokens"
+    - path: "server/src/db/queries/auth.ts"
+      description: "Query functions for tokens, user updates, email verification"
+    - path: "server/src/routes/auth.ts"
+      description: "Enhanced auth routes with new endpoints (existing file)"
+    - path: "server/src/middleware/rateLimit.ts"
+      description: "Rate limiting middleware configuration"
+    - path: "server/src/services/email/sender.ts"
+      description: "Email sending service using Nodemailer"
+    - path: "server/src/services/email/templates.ts"
+      description: "Email templates for reset and verification emails"
+    - path: "server/src/services/auth/tokens.ts"
+      description: "Token generation and hashing utilities"
+    - path: "server/src/services/auth/validation.ts"
+      description: "Password validation and email normalization"
+    - path: "shared/types.ts"
+      description: "Updated User interface, new token types (existing file)"
+    - path: "client/src/views/ForgotPassword.tsx"
+      description: "Forgot password request form"
+    - path: "client/src/views/ResetPassword.tsx"
+      description: "Password reset form (token from URL)"
+    - path: "client/src/views/AccountSettings.tsx"
+      description: "Account settings page with password change"
+    - path: "client/src/views/Login.tsx"
+      description: "Enhanced with forgot password link and validation (existing file)"
+    - path: "client/src/viewmodels/usePasswordReset.ts"
+      description: "ViewModel for forgot/reset password flows"
+    - path: "client/src/viewmodels/useAccountSettings.ts"
+      description: "ViewModel for password change and account management"
+    - path: "client/src/components/EmailVerificationBanner.tsx"
+      description: "Banner prompting unverified users to check their email"
+  tests:
+    - path: "server/src/__tests__/auth.test.ts"
+      description: "Integration tests for all auth endpoints"
+    - path: "server/src/__tests__/validation.test.ts"
+      description: "Unit tests for password validation and email normalization"
+    - path: "server/src/__tests__/tokens.test.ts"
+      description: "Unit tests for token generation and hashing"
+
+implementation_phases:
+  - phase: 1
+    name: "Database & Shared Types"
+    goal: "Extend the database schema and shared type definitions for auth enhancements"
+    deliverables:
+      - "Migration 002_auth_enhancements.sql: add email_verified to users, create password_reset_tokens and email_verification_tokens tables"
+      - "Updated User interface in shared/types.ts with email_verified field"
+      - "New PasswordResetToken and EmailVerificationToken types in shared/types.ts"
+
+  - phase: 2
+    name: "Auth Services & Utilities"
+    goal: "Build the backend service layer for tokens, validation, and email"
+    dependencies:
+      - "Phase 1"
+    deliverables:
+      - "Token service (services/auth/tokens.ts): generate and hash tokens with crypto"
+      - "Validation service (services/auth/validation.ts): password rules, email normalization"
+      - "Email sender service (services/email/sender.ts): Nodemailer with console fallback"
+      - "Email templates (services/email/templates.ts): reset and verification HTML templates"
+      - "Auth query functions (db/queries/auth.ts): token CRUD, user email verification updates"
+      - "Unit tests for validation and token services"
+
+  - phase: 3
+    name: "Rate Limiting & Security Hardening"
+    goal: "Add rate limiting to auth endpoints and harden existing security controls"
+    dependencies:
+      - "Phase 1"
+    deliverables:
+      - "Rate limiting middleware (middleware/rateLimit.ts) for login, register, and reset endpoints"
+      - "Case-insensitive email handling in register and login"
+      - "Password minimum length validation (8 chars) on register"
+      - "Generic error messages on login failure"
+
+  - phase: 4
+    name: "Password Reset Flow"
+    goal: "Implement the complete forgot-password and reset-password flow"
+    dependencies:
+      - "Phase 2"
+      - "Phase 3"
+    deliverables:
+      - "POST /api/auth/forgot-password endpoint"
+      - "POST /api/auth/reset-password endpoint"
+      - "ForgotPassword.tsx view and route"
+      - "ResetPassword.tsx view and route"
+      - "usePasswordReset.ts viewmodel hook"
+      - "Integration tests for password reset endpoints"
+
+  - phase: 5
+    name: "Password Change & Account Settings"
+    goal: "Allow authenticated users to change their password from account settings"
+    dependencies:
+      - "Phase 2"
+      - "Phase 3"
+    deliverables:
+      - "POST /api/auth/change-password endpoint"
+      - "AccountSettings.tsx view and route"
+      - "useAccountSettings.ts viewmodel hook"
+      - "Integration tests for password change endpoint"
+
+  - phase: 6
+    name: "Email Verification"
+    goal: "Send verification emails on registration and allow users to verify their email"
+    dependencies:
+      - "Phase 2"
+    deliverables:
+      - "POST /api/auth/verify-email endpoint"
+      - "POST /api/auth/resend-verification endpoint"
+      - "Verification email sent on registration"
+      - "EmailVerificationBanner.tsx component"
+      - "Updated App.tsx to show verification banner for unverified users"
+      - "Integration tests for verification endpoints"
+
+  - phase: 7
+    name: "Frontend Polish & Edge Cases"
+    goal: "Handle edge cases, improve UX, and ensure all acceptance scenarios pass"
+    dependencies:
+      - "Phase 4"
+      - "Phase 5"
+      - "Phase 6"
+    deliverables:
+      - "Session expiry redirect with message"
+      - "Already-authenticated redirect from login/register pages"
+      - "Browser back button protection after logout"
+      - "Updated Login.tsx with forgot password link"
+      - "Updated routing in App.tsx for new pages"
+      - "End-to-end acceptance scenario validation"
+
+open_questions:
+  - question: "Should unverified users have limited access or full access with a reminder banner?"
+    context: "Spec US-007 flags this as a clarification needed. Restricting access could frustrate new users; a banner is less disruptive."
+    proposed_resolution: "Full access with a non-blocking reminder banner. Email verification is P2 and should not gate core functionality."
+  - question: "Which SMTP provider should be used in production?"
+    context: "Nodemailer is transport-agnostic but needs SMTP credentials configured."
+    proposed_resolution: "Document supported providers in .env.example. Default to console logging in development. Production config is a deployment concern, not a code concern."
+
+_meta:
+  version: "1.0.0"
+  generator: "autospec"
+  generator_version: "autospec 0.10.5"
+  created: "2026-03-16T22:18:55Z"
+  artifact_type: "plan"
